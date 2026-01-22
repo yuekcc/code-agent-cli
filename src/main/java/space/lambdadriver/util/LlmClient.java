@@ -8,6 +8,7 @@ import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.List;
+import java.util.function.Consumer;
 
 public class LlmClient {
     private static final String OPENAI_ENDPOINT_URL = "http://127.0.0.1:9981/v1/chat/completions";
@@ -20,7 +21,7 @@ public class LlmClient {
         this.httpClient = HttpClientUtils.create();
     }
 
-    public String send(String body) throws IOException, InterruptedException {
+    public String send(String body, Consumer<String> onResponseDelta) throws IOException, InterruptedException {
         HttpRequest httpRequest = HttpRequest.newBuilder()
                 .uri(URI.create(OPENAI_ENDPOINT_URL))
                 .header("Authorization", "Bearer " + API_KEY)
@@ -30,34 +31,35 @@ public class LlmClient {
 
         StringBuilder buf = new StringBuilder();
         this.httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofLines()).body().forEach(line -> {
-            readLine(line, buf);
+            String delta = readLine(line, buf);
+            onResponseDelta.accept(delta);
         });
 
         return buf.toString();
     }
 
-    private static void readLine(String line, StringBuilder buf) {
+    private static String readLine(String line, StringBuilder buf) {
         if (line == null || line.isBlank()) {
-            return;
+            return "";
         }
 
         if (!line.startsWith("data:")) {
-            return;
+            return "";
         }
 
         String content = line.substring(5).trim();
         if (content.equals("[DONE]")) {
-            return;
+            return "";
         }
 
         ReplyMessage message = JSON.parseObject(content, ReplyMessage.class);
         String delta = message.getChoices().getFirst().getDelta().getContent();
-        if (delta != null) {
-            buf.append(delta);
-
-            // TODO
-            System.out.print(delta);
+        if (delta == null) {
+            return "";
         }
+
+        buf.append(delta);
+        return delta;
     }
 
     @Data
